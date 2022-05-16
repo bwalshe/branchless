@@ -8,8 +8,8 @@ capitalise:
 .updateChar:
         mov al, BYTE [rdi]  ; Move a char from the input into rax
         lea ecx, [eax - 97] ; Find the index of the character in relation to 'A'
-        lea edx, [eax - 32] ; Find the index of the lower case version of the 
-                            ; char, assuming the current one is uppercase
+        lea edx, [eax - 32] ; Find the index of the upper case version of the 
+                            ; char, assuming the current one is lowercase
         cmp cl, 26          ; Treat the value in ecx as an unsigned value. 
                             ; If the value in eax was less than 97 then this 
                             ; will now be some nonsense high number, so we 
