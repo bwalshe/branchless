@@ -4,16 +4,17 @@
 #include <time.h>
 
 #define MESSAGE "Hello, World!"
-#define TEST_CHARS  1000000000
-#define SHOW_CHARS  100
+#define TEST_CHARS  1000000015
+#define SUMMARY_FMT "%s 100 chars are:\n%.100s\n"
+
 
 /**
  * Capitalise a null terminated string using branch free operations.
  * implemented in capitalise.asm
  * Should be approximately the same as the following:
  *  
- * void capitalise(char *s) {
- *     for(int i=0; s[i] != 0; ++i) {
+ * void capitalise(char *s, size_t l) {
+ *     for(int i=0; i < l; ++i) {
  *         s[i] -= ('A' - 'a') * (s[i] >= 'a' && s[i] <= 'z');
  *     }
  * }
@@ -22,45 +23,53 @@
  * hand (shocked pikachu), but it fails to find a good optimisation if an `if`
  * clause was used int the above. 
  */
-void capitalise(char *s);
+void capitalise(char *s, char *t, size_t l);
 
+void simd_capitalise(char *s, char *t, size_t l);
+
+void naieve_capitalise(char *s, char *t, size_t l);
+
+void summarise(char *data, size_t length) {
+    printf(SUMMARY_FMT, "First", data);
+    printf(SUMMARY_FMT, "Last", data + length-100);
+}
+
+void time_it(void (fn(char *, char *, size_t)), char *data, size_t data_size) {
+    char *target = calloc(data_size, sizeof(char*));
+    clock_t start = clock();
+    fn(data, target, data_size);
+    clock_t end = clock();
+    printf("Took %lf seconds\n", (double) (end - start)/CLOCKS_PER_SEC);
+    summarise(target, data_size);
+    free(target);
+}
 
 /**
  * Demonstrate the use of the capitalise(char *) function then test its 
  * performacne.
  */
 int main(int argc, char **argv) {
-    char *hello = malloc(strlen(MESSAGE));
-    strncpy(hello, MESSAGE, strlen(MESSAGE));
-
-    printf("Before:\n%s\n", hello);
-
-    capitalise(hello);
-
-    printf("After:\n%s\n", hello);
-
-    free(hello);
-
-    hello = malloc(TEST_CHARS);
+    char *source = malloc(TEST_CHARS);
 
     printf("Doing performance test.\n");
     printf("Filling array of %d chars\n", TEST_CHARS);
     clock_t start = clock();
     for(int i=0; i<TEST_CHARS-1; ++i){
-        hello[i] = ' ' + rand() % ('~' - ' ');
+        source[i] = ' ' + rand() % ('~' - ' ');
     }
-    hello[TEST_CHARS-1]=0;
+    source[TEST_CHARS-1] = 0;
     clock_t end = clock();
     printf("Took %lf seconds\n", (double) (end - start)/CLOCKS_PER_SEC);
+    summarise(source, TEST_CHARS);
 
-    printf("Running capitalise\n");
-    start = clock();
-    capitalise(hello);
-    end = clock();
-    printf("Took %lf seconds\n", (double) (end - start)/CLOCKS_PER_SEC);
+    printf("\nTesting naieve version.\n");
+    time_it(&naieve_capitalise, source, TEST_CHARS);    
+    
+    printf("\nTesting branchless version.\n");
+    time_it(&capitalise, source, TEST_CHARS);    
 
-    char short_str[SHOW_CHARS + 1];
-    strncpy(short_str, hello, SHOW_CHARS);
-    printf("First %d chars are:\n%s\n", SHOW_CHARS, short_str); 
-    free(hello);
+    printf("\nTesting SIMD version.\n");
+    time_it(&simd_capitalise, source, TEST_CHARS);    
+
+    free(source);
 }
