@@ -27,7 +27,7 @@ void capitalise(char *s, char *t, size_t l);
 
 void simd_capitalise(char *s, char *t, size_t l);
 
-void naieve_capitalise(char *s, char *t, size_t l);
+void naive_capitalise(char *s, char *t, size_t l);
 
 void summarise(char *data, size_t length) {
     printf(SUMMARY_FMT, "First", data);
@@ -62,14 +62,15 @@ int main(int argc, char **argv) {
     printf("Took %lf seconds\n", (double) (end - start)/CLOCKS_PER_SEC);
     summarise(source, TEST_CHARS);
 
-    printf("\nTesting naieve version.\n");
-    time_it(&naieve_capitalise, source, TEST_CHARS);    
+    printf("\nTesting naive version.\n");
+    time_it(&naive_capitalise, source, TEST_CHARS);    
     
     printf("\nTesting branchless version.\n");
     time_it(&capitalise, source, TEST_CHARS);    
 
     printf("\nTesting SIMD version.\n");
     time_it(&simd_capitalise, source, TEST_CHARS);    
+    printf("\n");
 
     free(source);
 }
