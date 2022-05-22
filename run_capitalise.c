@@ -3,7 +3,6 @@
 #include <stdlib.h>
 #include <time.h>
 
-#define MESSAGE "Hello, World!"
 #define TEST_CHARS  1000000015
 #define SUMMARY_FMT "%s 100 chars are:\n%.100s\n"
 

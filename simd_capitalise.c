@@ -14,7 +14,7 @@ void simd_capitalise(char *source, char *target, size_t len) {
         size_t offset = i * CHUNK_SIZE;
         memcpy(&chunk, source + offset, CHUNK_SIZE);
 
-        chunk += dif * ((chunk >= a) * (chunk <= z));
+        chunk += dif * (chunk >= a) * (chunk <= z);
         memcpy(target + offset, &chunk, CHUNK_SIZE);
     }
     for(size_t i = num_chunks * CHUNK_SIZE; i < len; ++i) {
