@@ -1,9 +1,9 @@
-        global capitalise
+        global branchless_capitalise
 
         section .text 
-capitalise:
-        push rbp            ; Preserve the return address
-        mov rbp, rsp        ; Set up the stack (these two lines aren't really neded
+branchless_capitalise:
+        cmp rdx, 0
+        je .end
         xor rax, rax        ; Clear out rax as we will only use the lower bytes
         xor rcx, rcx        ; Zero rcx so we can use it to count how many chars
                             ; have been processed
@@ -24,5 +24,4 @@ capitalise:
         cmp rcx, rdx        ; Check if we have reached the end of the string
         jne .updateChar
 .end:
-        pop rbp
         ret

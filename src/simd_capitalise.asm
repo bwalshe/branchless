@@ -2,6 +2,8 @@
         section .text 
 
 simd_capitalise:
+        cmp rdx, 0
+        je .end
         push rdx            ; rdx currently holds the size of the string
         mov rax, rdx        ; calculate the number of 32 char blocks in he input
         xor rdx, rdx
@@ -27,10 +29,10 @@ simd_capitalise:
         jnz .updateBlock
 .updateChar:
         movzx eax, BYTE [rdi + rcx]  ; Move a char from the input into rax
-        lea r8d, [eax - 97] ; Find the index of the character in relation to 'A'
-        lea r9d, [eax - 32] ; Find the index of the upper case version of the 
+        lea r8d, [eax - 'a'] ; Find the index of the character in relation to 'A'
+        lea r9d, [eax + 'A'-'a'] ; Find the index of the upper case version of the 
                             ; char, assuming the current one is lowercase
-        cmp r8b, 26         ; We will treat the value in r8 as an unsigned 
+        cmp r8b, 'z'-'a'+1  ; We will treat the value in r8 as an unsigned 
                             ; number, hich means that if the value in eax was 
                             ; less than 97 then this will appear to be some 
                             ; nonsense high number, and we just need to check 
@@ -41,7 +43,7 @@ simd_capitalise:
         add rcx, 1
         cmp rcx, rdx        ; Check if we have reached the end of the string
         jne .updateChar
-
+.end:
         ret
 
         section .data
