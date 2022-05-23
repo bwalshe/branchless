@@ -8,10 +8,9 @@ set( SOURCES
     src/capitalise.asm
     src/branchless_capitalise.asm
     src/simd_capitalise.asm
-    src/capitalise.h
 )
 
-include_directories(src)
+include_directories(include)
 
 add_executable(perf_test test/perf_test.c ${SOURCES})
 find_package(Catch2 REQUIRED)
