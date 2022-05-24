@@ -6,7 +6,7 @@
 #include "capitalise.h"
 
 
-#define TEST_CHARS  1000000015
+#define TEST_CHARS  1000000000
 
 
 void time_it(void (fn(char *, char *, size_t)), char *data, size_t data_size) {

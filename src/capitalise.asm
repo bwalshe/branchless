@@ -2,7 +2,7 @@
 
         section .text 
 capitalise:
-        cmp rdx, 0
+        cmp rdx, 0          ; rdx is the length of the string
         je .end
         xor rax, rax        ; Clear out rax as we will only use the lower bytes
         xor rcx, rcx        ; Zero rcx so we can use it to count how many chars
@@ -20,5 +20,6 @@ capitalise:
         add rcx, 1
         cmp rcx, rdx        ; Check if we have reached the end of the string
         jne .updateChar
+        mov BYTE [rsi + rcx], 0     ; terminate the output string
 .end:
         ret

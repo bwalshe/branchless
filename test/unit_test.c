@@ -53,7 +53,20 @@ void test_single_char(char *name, void test_fn(char *,char*, size_t)) {
 
 }
 
-void test_multi_char(char *name, void test_fn(char *,char*, size_t)) {
+
+void test_target_longer(char *name, void test_fn(char *, char *, size_t)) {
+    printf("testing %s when the target string is longer than the source.\n", 
+            name); 
+    char *src =  "AAA";
+    char *target = malloc(100);
+    memset(target, 'A', 100);
+    target[99] =  '\0';
+    test_fn(src, target, 3);
+    assert(strlen(src) == strlen(target));
+}
+
+
+void test_multi_char(char *name, void test_fn(char *, char*, size_t)) {
     printf("Testing %s with an multi char string.\n", name);
     
     char * target =  calloc(strlen(ALL_UPPER) +  1, sizeof(char));
@@ -64,6 +77,7 @@ void test_multi_char(char *name, void test_fn(char *,char*, size_t)) {
 void test_capitalise(char *name, void test_fn(char *,  char *, size_t)) {
     test_empty(name, test_fn);
     test_single_char(name, test_fn);
+    test_target_longer(name, test_fn);
     test_multi_char(name, test_fn);
 }
 
@@ -71,10 +85,10 @@ void test_chunked_capitalise(char *name,
         void test_fn(char *,  char *, size_t),
         int chunks,  int chunk_size, int extra) {
     int total_size = chunks * chunk_size  + extra;
-    char  src[total_size + 1], target[total_size + 1], expected[total_size + 1];
+    char  src[total_size+1], target[total_size+1], expected[total_size+1];
     memset(src, 'a', total_size);
     memset(expected, 'A', total_size);
-    src[total_size] = expected[total_size] = 0;
+    src[total_size] = expected[total_size] = '\0';
     printf("Testing %s with %d chunks of %d bytes + %d extra.\n", 
             name, chunks, chunk_size, extra);
     test_fn(src, target, total_size);
@@ -86,6 +100,8 @@ int main(int argc, char **argv) {
     test_capitalise("branchless_capitalise", branchless_capitalise);
     test_capitalise("simd_capitalise",  simd_capitalise);
     test_chunked_capitalise("simd_capitalise", simd_capitalise, 3, 32, 5);
+    test_chunked_capitalise("simd_capitalise", simd_capitalise, 3, 32, 0);
+    test_chunked_capitalise("simd_capitalise", simd_capitalise, 0, 32, 5);
     printf("All tests passed\n");
     return 0;
 }
