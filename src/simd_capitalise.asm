@@ -7,14 +7,12 @@
        section .text 
 
 simd_capitalise:
-        cmp rdx, 0          ; rdx currently holds the size of the string
+        cmp rsi, 0          ; rsi currently holds the size of the string
         je .end
-        push rdx                    
-        mov rax, rdx        ; calculate the number of 32 char blocks in he input
+        mov rax, rsi        ; calculate the number of 32 char blocks in he input
         xor rdx, rdx
         mov rcx, block_size
         div rcx
-        pop rdx             ; restore the input size to rdx
         xor rcx, rcx        ; clear out rcx because it will be used as a counter
         cmp rax, 0          ; if there were less than 32 chars, skip the simd section
         je .updateChar        
@@ -24,16 +22,16 @@ simd_capitalise:
 .updateBlock:
         vmovdqu ymm0, [rdi + rcx]   ; move the next block of input into a reg
         vpcmpgtb ymm4, ymm0, ymm2   ; test input >= 'a'
-        vpand ymm5, ymm1, ymm4      ; mask the diff vector that will be added
-        vpcmpgtb ymm4, ymm3, ymm0   ; test input <= 'z'
-        vpand ymm6, ymm5, ymm4      ; mask the diff vector again
-        vpaddb ymm0, ymm6           ; add the masked diff vector to the input
-        vmovdqu [rsi + rcx], ymm0   ; save the result
+        vpcmpgtb ymm5, ymm3, ymm0   ; test input <= 'z'
+        vpand ymm6, ymm1, ymm4      ; mask the diff based on >= 'a'
+        vpand ymm7, ymm5, ymm6      ; mask the diff based om <= 'z'
+        vpaddb ymm0, ymm7           ; add the masked diff vector to the input
+        vmovdqu [rdi + rcx], ymm0   ; save the result
         add rcx,  block_size        ; index of next block
         dec rax
         jnz .updateBlock
-        cmp rcx, rdx
-        je .writeNull
+        cmp rcx, rsi
+        je .end
 .updateChar:
         movzx eax, BYTE [rdi + rcx]  ; Move a char from the input into rax
         lea r8d, [eax - 'a']    ; Where is the character in relation to 'A'
@@ -46,12 +44,10 @@ simd_capitalise:
                             ; that x - 'a' < 26 
         cmovb eax, r9d      ; Conditinally move the upper case letter into the
                             ; array
-        mov BYTE [rsi + rcx], al 
+        mov BYTE [rdi + rcx], al 
         add rcx, 1
-        cmp rcx, rdx 
+        cmp rcx, rsi 
         jne .updateChar
-.writeNull:
-        mov BYTE [rsi + rcx], 0
 .end:
         ret
 

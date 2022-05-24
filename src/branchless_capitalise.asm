@@ -5,7 +5,7 @@
 
         section .text 
 branchless_capitalise:
-        cmp rdx, 0          ; If the length of the input is 0, jump to the end
+        cmp rsi, 0          ; If the length of the input is 0, jump to the end
         je .end
         xor rax, rax        ; Clear out rax as we will only use the lower bytes
         xor rcx, rcx        ; Zero rcx so we can use it to count how many chars
@@ -22,10 +22,9 @@ branchless_capitalise:
                             ; that x - 'a' < 26 
         cmovb eax, r9d      ; Conditinally move the upper case letter into the
                             ; array
-        mov BYTE [rsi + rcx], al 
+        mov BYTE [rdi + rcx], al 
         add rcx, 1
-        cmp rcx, rdx        ; Check if we have reached the end of the string
+        cmp rcx, rsi        ; Check if we have reached the end of the string
         jne .updateChar
-        mov BYTE [rsi + rcx], 0
 .end:
         ret

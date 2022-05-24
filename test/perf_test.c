@@ -9,13 +9,14 @@
 #define TEST_CHARS  1000000000
 
 
-void time_it(void (fn(char *, char *, size_t)), char *data, size_t data_size) {
-    char *target = calloc(data_size, sizeof(char*));
+void time_it(void (fn(char *, size_t)), char *data, size_t data_size) {
+    char *data_copy = malloc(data_size);
+    memcpy(data_copy, data, data_size + 1);
     clock_t start = clock();
-    fn(data, target, data_size);
+    fn(data_copy, data_size);
     clock_t end = clock();
     printf("Took %lf seconds\n", (double) (end - start)/CLOCKS_PER_SEC);
-    free(target);
+    free(data_copy);
 }
 
 /**
