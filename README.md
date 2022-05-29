@@ -181,7 +181,7 @@ value.
 Combining `cmovb` with the trick described in the section above, the 
 capitalisation loop can be implemented as follows:
 
-```
+```asm
 .updateChar:
         movzx eax, BYTE [rdi + rcx] ; Move a char from the input into rax
         lea r8d, [eax - 32]         ; Convert the char to uppercase, assuming

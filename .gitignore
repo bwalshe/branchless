@@ -2,3 +2,4 @@
 *.s
 build
 a.out
+*.swp
