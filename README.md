@@ -3,18 +3,20 @@
 This project shows a simple demonstration for branchless programming, and
 how it affects the running time of program. To illustrate the difference I am
 going to implement a string capitalisation function three ways and measure
-how long they take to process a string of one billion characters. 
+how long they take to process a string of one billion characters. Spoiler: the
+final version is more than 20 times as fast as the original.  
 
 I'll start with a simple, unoptimised version which scans through the string
-linearly updating any lower case alphabetic characters it finds. Then I'll show a "branchless" version which still scans through linearly, but uses special
+linearly, updating any lower case alphabetic characters it finds. Then I'll show
+a "branchless" version which still scans through linearly, but uses special
 conditional instructions to avoid needing to jump around the place. Finally, 
 I will show a SIMD version which uses vector instructions to process strings
 in blocks of 32 characters at a time.
 
-I'll get to describing those soon, but first I should explain why we hate
+I'll get to describing these soon, but first I should explain why we hate
 branches so much. 
 
-## Why is branching bad?
+## Why is Branching Bad?
 When CPUs execute instructions, each instruction isn't really executed as an
 atomic operation. What actually happens is that first the instruction is 
 fetched, then it is decoded, then it is actually executed, and finally the 
@@ -46,7 +48,7 @@ for(int i=0; i < len; ++i) {
 }
 ```
 
-## A crash course in assembly
+## A Crash Course in Assembly
 The compiler has a lot of leeway in how to convert this into instructions for 
 the CPU so in order to show exactly where the bracing occurs, I'm going to 
 have to go one level down and write things in assembler where there is 
@@ -79,13 +81,13 @@ topOfLoop:
     jnz topOfLoop
 ```
 
-I won't list all the jump instructions. The only thing you need to remember
-about them is that they begin with the letter 'j', and everybody hates them
-because they mess up the instruction pipeline. 
+I won't list all the jump instructions. The only thing you need to know is that
+any instruction that begins with the letter 'j' is a jump, and everybody hates 
+them because they mess up the instruction pipeline. 
 
-## V1.0: a very jumpy capitalisation function
-OK if I was to implement the capitalisation algorithm shown above in assembler
-I would go for something like this:
+## V1.0: A Very Jumpy Capitalisation Function
+If I was to implement the capitalisation algorithm shown above, I would go for
+something like this:
 
 ```asm
 updateChar:
@@ -103,29 +105,29 @@ incrementIndex:
         jne updateChar
 ```
 
-Basically, this implementation runs by first loading a byte from memory, 
-then checking if the value is in between 'a' and 'z'. If it isn't then we just
-increment the array index stored in `rcx` and start from the top of the loop. 
-If the value *is* between 'a' and 'z' then we subtract 32 and write it back to 
-memory, before incrementing the index and looping. 
+Basically, this implementation first loads a byte from memory, then it checks
+if the value is between 'a' and 'z'. If it isn't then it just
+increments the array index stored in `rcx` and starts from the top of the loop. 
+If the value *is* between 'a' and 'z' then it subtracts 32 from the value and 
+writes it back to memory, before incrementing the index and looping. 
 
 One slightly weird thing here is that `eax` and `al` are the same register. 
-With `al` being the lower 8 bits of `eax`. It is a little more efficient to
-read the data into `eax`, zeroing the upper bits, and then writing out using
+With `al` being the lower 8 bits of `eax`. It's a little more efficient to read
+the data into `eax`, zeroing the upper bits, and then writing out using
 `al`, than it is to read and write using `al` on its own.  
 
 On my computer, this takes about 3.32 seconds to process 10^9 characters. This
 isn't great, and it's probably due to those two branches used to determine if
 the character was between 'a' and 'z'.
 
-## V1.5: A slightly less jumpy implementation
+## V1.5: A Slightly Less Jumpy Implementation
 
 *You can skip this section if you want, it describes how to make things a bit
 more efficient, but it doesn't introduce branchless instructions yet.*
 
-If I take that snippet of C code shown above and turn it into a well-formed 
-function, I can get the compiler to generate an optimized version. Using 
-`gcc -O2`, I got an interesting optimisation that is worth talking about.
+If I take that snippet of C code shown above, turn it into a well-formed 
+function, and get the compiler to generate an optimized version, it produces
+an interesting optimisation that is worth talking about.
 
 This version uses a hack to remove one of the jump instructions as follows:
 
@@ -141,34 +143,36 @@ incrementIndex:
         cmp rcx, rsi        ; Check if we have reached the end of the string
         jne updateChar
 ```
-OK, I call this a "hack" but actually there are two things being done here, and
-they are both considered fairly normal practice in the world of x86 assembly.
+OK, I call this a "hack" but actually there are two separate things happening
+here, and they are both considered fairly normal practice in the world of x86
+assembly.
 
-The first thing is that the `lea` instruction is being used to perform 
-arithmetic. This instruction - load effective address - was originally intended
-for making working with pointers more efficient, but there is nothing about it
+The first thing is that the `lea` instruction is used to perform arithmetic. 
+This instruction - load effective address - was originally intended
+for making pointer arithmetic more efficient, but there is nothing about it
 that actually forces you to use it on a pointer. `lea r9d, [eax - 'a']` will
 subtract 'a' from the value in `eax` and store the result in `rd9` using a 
 single instruction.
 
 The next bit, the really weird bit, is that it will compere the result to 26,
-and jump if the value is not lower. So if the original value was greater than 
-'z' this will result in a jump. What if the value was less than 'a'? Where is
-the test for that. Well here is the thing `jnb` treats the value as *unsigned*.
-If you have a negative signed value, then the bits in the register are going 
-to be equivalent to some large unsigned number. If the value in `eax` was less
-than `a`, then the unsigned result of subtracting 'a' will be larger than 26.
-I find this pretty confusing, but I have seen it described in introductory 
-texts for x86 assembler, so I guess it is pretty common. It definitely cuts
-out one of the jump instructions and it does give you a significant performance
-improvement, but there is still one jump left, and there is a way we can 
-remove that.
+and jump if the value is not lower. As we have already subtracted 'a' from 
+the original and as 'z' is 26 places away from 'a' if the original value was
+greated than 'z' this test will result in a jump. What if the value was less
+than 'a'? Where is the test for that? Well here is the thing `jnb` treats the
+ value as *unsigned*. If you have a negative signed value, then the bits in the
+register are going to be equivalent to some large unsigned number. If the value
+in `eax` was less than `a`, then the unsigned result of subtracting 'a' will be
+larger than 26. I find this pretty confusing, but I have seen it described in
+introductory texts for x86 assembler, so I guess it is pretty common. It
+definitely cuts out one of the jump instructions and it does give you a 
+significant performance improvement, but there is still one jump left, so there
+are still gains to be made.
 
-## A branch-free implementation
+## V2.0: A Branch-free Implementation
 It's possible to remove the last jump instruction in the range check by using 
-a *conditional* move instruction. These behave like a regular move instruction
-except if their condition is not met, then they do nothing. Like the jump
-instructions, there are several variants of conditional move, that use different
+a *conditional* move instruction. These behave like a regular move instruction,
+except that if their condition is not met, then they do nothing. Like the jump
+instructions, there are several variants of conditional move that use different
 conditions. `cmove` will be triggered if the previous comparison was equal, 
 `cmovz` will be triggered if the last arithmetic operation resulted in zero, 
 and `cmovb` will be triggered if the last comparison was below an *unsigned*
@@ -197,7 +201,7 @@ capitalisation loop can be implemented as follows:
 ```
 
 This version always subtracts 32 from the value loaded form memory, for 
-characters that are not lower case letters, this will result in a nonsense 
+characters that are not lower-case letters, this will result in a nonsense 
 value, but that doesn't matter at this point. After the value has been 
 calculated, the check to see if the original value was between 'a' and 'z' is 
 performed. If this comparison is successful, *then* the value is written back
@@ -209,4 +213,84 @@ thrown away, and the `cmovb` operation takes more clock cycles than a
 non-conditional `mov` operation. Still though, this results in far fewer
 pipeline flushes, and on my computer it can process 10^9 characters in about
 0.65 seconds. That is a bit more than a 5x improvement in running time. 
+
+
+## V3.0 SIMD Implementation
+One of the interesting things about the branchless implementation, is that no
+mater what data are being processed, the exact same set of instructions are 
+executed each iteration of the loop. Some of the instructions might not do
+anything, depending on the data, but they always get executed. This means that
+the algorithm is a good candidate for running as a Single Instruction, 
+Multiple Data (SIMD) program. 
+
+The x86 family of chips have had a few different SIMD facilities over the 
+years. I think it started with MMX, and then went through a few flavours
+of AVX. The most modern being AVX-512, but on my CPU I only have the 
+slightly older AVX-2.
+
+The SIMD functionality consist of large registers that are capable of holding
+arrays of values and instructions which can be applied to these values in 
+parallel. The AVX-2 registers on my computer are 256 bits wide, which means
+they can hold 32 8-bit characters at once. The full contents of the SIMD version
+of the capitalisation function is listed in 
+[simd_capitalise.asm](src/simd_capitalise.asm), and includes code that figures
+out how many 32 character blocks are in the input string, as well as the code
+to capitalise any left-over characters if the string length is not an exact 
+multiple of 32. I won't go into detail on those parts, and instead will just
+focus on the SIMD loop body. 
+
+This uses a slightly different formulation of the loop described at the start 
+of the article. Instead of using an `if` statement, it is possible to do the 
+capitalisation as follows:
+
+```c
+for(int i=0; i < len; ++i) {
+    s[i] -= 32 * (s[i] >= 'a' && s[i] <= 'z')
+}
+```
+
+This relies on the fact that C will convert the result of 
+`(s[i] >= 'a' && s[i] <= 'z')` to either 1 or 0 depending on if it evaluates
+to true or false. 
+
+The assembler implementation of this is as follows:
+
+```asm
+        vmovdqu ymm1, [rel diff_vec] ; set up the constants that will be 
+        vmovdqu ymm2, [rel a_vec]    ; used in the SIMD calculations
+        vmovdqu ymm3, [rel z_vec]    
+.updateBlock:
+        vmovdqu ymm0, [rdi + rcx]   ; move the next block of input into a reg
+        vpcmpgtb ymm4, ymm0, ymm2   ; test input >= 'a'
+        vpcmpgtb ymm5, ymm3, ymm0   ; test input <= 'z'
+        vpand ymm6, ymm1, ymm4      ; mask the diff based on >= 'a'
+        vpand ymm7, ymm5, ymm6      ; mask the diff based om <= 'z'
+        vpaddb ymm0, ymm7           ; add the masked diff vector to the input
+        vmovdqu [rdi + rcx], ymm0   ; save the result
+        add rcx,  block_size        ; index of next block
+        dec rax
+        jnz .updateBlock
+```
+
+This starts off by loading some constants into the `ymm` registers so that they
+can be used later on. `diff_vec` is an array of 32 `-32` values, `a_vec` 
+contains 32 ('a' -1) values and `z_vec` contains 32 ('z' + 1) values. The reason 
+for not using `a` and `z` in the vectors, is because the SIMD instructions
+only let us test for greater-than, and we want to test greater-than-or-equal and 
+less-than-or-equal
+
+Once the constants have been loaded, the loop begins. First it loads 256 bytes 
+from the input array into `ymm0`. Then it does two comparison operations to test 
+for the values that are >= 'a', and the values that are <= 'z'. This leaves two 
+bit-masks in `ymm4` and `ymm5` which are ANDed with the vector of -32s in 
+`ymm1` to give a vector that contains -32 in the positions where a lower-case 
+character was seen and 0 were some other character was seen. Finally this
+vector is added to the input, and written back out to memory and before moving
+on to the next block of characters.
+
+This implementation processes 10^9 characters in about 0.14 seconds on my 
+computer, which is about 4.6 times as fast as the version which used 
+conditional moves to avoid branching, and almost 21 times as fast as the 
+original, branching implementation.
+
 
