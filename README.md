@@ -19,15 +19,15 @@ or using intrinsics in C, and because of this, I was interested to see how well
 the compiler could optimise the problem automatically.
 
 In this document I am going to spend most of my time describing the 
-optimisations and why they work, then at the end I will explore how to get  
-`gcc` to do the optimisations automatically, and how to diagnose issues with
-the optimizer.
+optimisations and why they work, then at the end I will explore how to get the GNU compiler to do the optimisations automatically, and how to diagnose issues 
+with its optimizer.
 
-Before I get to that though I am going to have to give a very brief introduction
-to reading assembly language, and describe some key components of computer
-architecture that the optimisations will take advantages of.
+Before I get to that though, I am going to have to give a very brief 
+introduction to reading assembly language, and describe some key components of 
+computer architecture that the optimisations described here will take 
+advantages of.
 
-## A crash course in assembly
+## A Crash Course in Assembly
 A C compiler has a lot of leeway in how to convert code into instructions for 
 the CPU, so in order to show exactly what is being executed, I'm going to 
 have to go one level down and write things in assembler, as this gives complete
@@ -64,7 +64,7 @@ I won't list all the jump instructions. The only thing you need to know is that
 any instruction that begins with the letter 'j' is a jump, and everybody hates 
 them because they mess up the instruction pipeline. 
 
-## Why do modern CPUs hate jump instructions so much anyway?
+## Why Do Modern CPUs Hate Jump Instructions So Much Anyway?
 
 Back when I was a kid, CPU clock-speeds kept shooting up year on year. That is 
 how you could tell computers were getting better, there was a number on a chart
@@ -80,7 +80,7 @@ to execute multiple instructions at the same time, and SIMD instructions which
 can process multiple pieces of data with a single instruction. These are 
 quite different techniques, but neither of them mix well with branching code.
 
-### Instruction pipelining 
+### Instruction Pipelining 
 
 Pipelining is one of the oldest forms of ILP, and has actually been around 
 since the mid-80s 
@@ -99,7 +99,7 @@ will already start loading instruction *n+3*. If instruction n says to jump to
 some other instruction, then instructions *n+1*, *n+2*, and *n+3* will have to 
 be flushed from the pipeline so the new string of instructions can be processed.
 
-### SIMD instructions
+### SIMD Instructions
 
 SIMD stands for Single Instruction Multiple Data. When working wiht SIMD, you
 use arrays of data instead of individual values. There are a few restrictions 
@@ -110,7 +110,7 @@ have to deal with, and you might need to apply different operations to the
 elements of your array. There are ways around this, as will be shown in the 
 examples coming up. 
 
-## Capitalising UTF-8 strings
+## Capitalising UTF-8 Strings
 
 The ASCII/UTF-8 character encoding is set up in a way that you can capitalise 
 a character by subtracting 32 from it. At least if it is a lower-case 
@@ -127,7 +127,7 @@ for(int i=0; i < len; ++i) {
 }
 ```
 
-### V1.0: A very jumpy capitalisation function
+### V1.0: A Very Jumpy Capitalisation Function
 If I was to implement the capitalisation algorithm shown above, I would go for
 something like this:
 
@@ -163,7 +163,7 @@ isn't great, and it's probably due to those two branches used to determine if
 the character was between 'a' and 'z'.
 
 
-## V1.5: A slightly less jumpy implementation
+## V1.5: A Slightly Less Jumpy Implementation
 
 *You can skip this section if you want, it describes how to make things a bit
 more efficient, but it doesn't introduce branchless instructions yet.*
@@ -211,7 +211,7 @@ definitely cuts out one of the jump instructions and it does give you a
 significant performance improvement, but there is still one jump left, so there
 are still gains to be made.
 
-### V2.0: A Branch-free implementation
+### V2.0: A Branch-free Implementation
 It's possible to remove the last jump instruction in the range check by using 
 a *conditional* move instruction. These behave like a regular move instruction,
 except that if their condition is not met, then they do nothing. Like the jump
@@ -258,7 +258,7 @@ pipeline flushes, and on my computer it can process 10^9 characters in about
 0.65 seconds. That is a bit more than a 5x improvement in running time. 
 
 
-### V3.0 SIMD implementation
+### V3.0 SIMD Implementation
 One of the interesting things about the branchless implementation, is that no
 mater what data are being processed, the exact same set of instructions are 
 executed each iteration of the loop. Some of the instructions might not do
@@ -336,7 +336,7 @@ computer, which is about 4.6 times as fast as the version which used
 conditional moves to avoid branching, and almost 21 times as fast as the 
 original, branching implementation.
 
-## Automatically generating SIMD code
+## Automatically Generating SIMD Code
 Having devoted so much space to describing how these optimisations work, this
 section on how to get `gcc` to automatically generate them is going to be 
 pretty brief. There is not much to say besides which switches to use and how to
@@ -367,14 +367,15 @@ flag is included in `-02`.
 
 If you want to get `gcc` to produce AVX2 SIMD code, then you need to enable
 `-ftree-vectorize` and also you need to tell `gcc` that it is OK to use AVX2
-operations. By default, `gcc` will avoid using AVX2, as not all x86 CPUs have
-these instructions. Using the C example above, compiling with 
+operations. By default, `gcc` will avoid using AVX2, and will use the older 
+MMX instructions instead as not all x86 CPUs have AVX2. 
 
-`gcc -O2 -ftree-vectorize -mavx2` will produce a result very similar to the 
+Using the C example above, and compiling with `gcc -O2 -ftree-vectorize -mavx2` will produce a result very similar to the 
 [SIMD assembler implementation](#v30-simd-implementation) of the capitalize 
-function. 
+function. So for this case, at least, you do not need to use intrinsics to
+get a good SIMD optimisation out of your C code.
 
-### Diagnosing issues with optimizations
+### Diagnosing Issues With Optimizations
 As shown above, the optimization can be sensitive to the initial C code that 
 is supplied. Even if the implementation is logically equivalent, use of an `if`
 statement can result in the optimizer failing to find the right optimization.
