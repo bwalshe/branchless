@@ -163,7 +163,7 @@ isn't great, and it's probably due to those two branches used to determine if
 the character was between 'a' and 'z'.
 
 
-## V1.5: A Slightly Less Jumpy Implementation
+### V1.5: A Slightly Less Jumpy Implementation
 
 *You can skip this section if you want, it describes how to make things a bit
 more efficient, but it doesn't introduce branchless instructions yet.*
