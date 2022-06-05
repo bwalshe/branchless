@@ -1,65 +1,44 @@
-# Branchless Programming
+# Understanding Branchless and SIMD Optimisations
 
-This project shows a simple demonstration for branchless programming, and
-how it affects the running time of program. To illustrate the difference I am
-going to implement a string capitalisation function three ways and measure
-how long they take to process a string of one billion characters. Spoiler: the
-final version is more than 20 times as fast as the original.  
+A while ago I saw [this video](https://www.youtube.com/watch?v=bVJ-mWWL7cE),
+which demonstrates how conditional move and SIMD instructions can be used to
+greatly improve the performance of a function which capitalises letters in a
+string. 
 
-I'll start with a simple, unoptimised version which scans through the string
-linearly, updating any lower case alphabetic characters it finds. Then I'll show
-a "branchless" version which still scans through linearly, but uses special
-conditional instructions to avoid needing to jump around the place. Finally, 
-I will show a SIMD version which uses vector instructions to process strings
-in blocks of 32 characters at a time.
+The video starts with a simple, unoptimised version which scans through the 
+string linearly, updating any lower case alphabetic characters it finds. Then 
+it shows a "branchless" version which still scans through linearly, but uses 
+special conditional-move instructions to avoid needing to use as many jump
+instructions. Finally, it shows a SIMD version which uses vector instructions 
+to process strings in blocks of 32 characters at a time.
 
-I'll get to describing these soon, but first I should explain why we hate
-branches so much. 
+Throughout the video the presenter talks about the comparative performance of
+his hand-coded assembly and what a C compiler would produce. I also think he
+kind of implies that the SIMD version can only be achieved by writing assembly
+or using intrinsics in C, and because of this, I was interested to see how well
+the compiler could optimise the problem automatically.
 
-## Why is Branching Bad?
-When CPUs execute instructions, each instruction isn't really executed as an
-atomic operation. What actually happens is that first the instruction is 
-fetched, then it is decoded, then it is actually executed, and finally the 
-result is written back. Actually, depending on the CPU architecture, there may
-be more stages, and it's possible that the CPU might execute some instructions
-in parallel or even out of order if it thinks can do this without changing the
-result.
+In this document I am going to spend most of my time describing the 
+optimisations and why they work, then at the end I will explore how to get  
+`gcc` to do the optimisations automatically, and how to diagnose issues with
+the optimizer.
 
-Branches kill the CPU's ability to do stuff like this. Assuming that the CPU
-has a four stage pipeline, at instruction *n*, the CPU will already start 
-loading instruction *n+3*. If instruction n says to jump to some other 
-instruction, then instructions *n+1*, *n+2*, and *n+3* will have to be flushed
-from the pipeline so the new string of instructions can be processed.
+Before I get to that though I am going to have to give a very brief introduction
+to reading assembly language, and describe some key components of computer
+architecture that the optimisations will take advantages of.
 
-## Capitalising UTF-8 Strings
-
-The ASCII/UTF-8 character encoding is set up in a way that you can capitalise 
-a character by subtracting 32 from it. At least if it is a lower-case 
-alphabetic character, you can  do this. For upper-case or punctuation 
-characters, subtracting 32 will result in gibberish, so first you have to check
-the character is something between 'a' and 'z'. In C, to capitalise the string 
-`s` with length `len` you could do something like this:
-
-```c
-for(int i=0; i < len; ++i) {
-   if(s[i] >= 'a' && s[i] <= 'z') {
-     s[i] -= 32;
-   }
-}
-```
-
-## A Crash Course in Assembly
-The compiler has a lot of leeway in how to convert this into instructions for 
-the CPU so in order to show exactly where the bracing occurs, I'm going to 
-have to go one level down and write things in assembler where there is 
-complete control over which instructions are used. 
+## A crash course in assembly
+A C compiler has a lot of leeway in how to convert code into instructions for 
+the CPU, so in order to show exactly what is being executed, I'm going to 
+have to go one level down and write things in assembler, as this gives complete
+control over which instructions are used. 
 
 Assembly is a pretty daunting subject, but in order to understand these 
-examples there are only a few things you need to know. First of all, in order
-to change any values in memory, you need to first move them into a register
-using a `mov` instruction, manipulate the value in the register and then write
-it back out to memory. So adding one to the value stored at memory address
-`x` would require something like this
+examples here there are only a few things you need to know. First of all, in 
+order to change any values in memory, you need to first move them into a 
+register using a `mov` instruction, manipulate the value in the register and 
+then write it back out to memory. So adding one to the value stored at memory 
+address `x` would require something like this
 
 ```asm
     mov rax, [x]    ; Move the value at x into rax
@@ -85,7 +64,70 @@ I won't list all the jump instructions. The only thing you need to know is that
 any instruction that begins with the letter 'j' is a jump, and everybody hates 
 them because they mess up the instruction pipeline. 
 
-## V1.0: A Very Jumpy Capitalisation Function
+## Why do modern CPUs hate jump instructions so much anyway?
+
+Back when I was a kid, CPU clock-speeds kept shooting up year on year. That is 
+how you could tell computers were getting better, there was a number on a chart
+that kept getting bigger and bigger. Then clock speeds started to flatten out,
+and more recently the magic number that has been increasing is the number of 
+cores on the CPU. 
+
+Clock speeds and multiple cores aren't the only innovations that have happened
+to computer architecture over the years, they are just some of the more easy to
+understand concepts that fit nicely into advertisements. Other important 
+innovations include Instruction Level Parallelism (ILP) which allows a CPU
+to execute multiple instructions at the same time, and SIMD instructions which
+can process multiple pieces of data with a single instruction. These are 
+quite different techniques, but neither of them mix well with branching code.
+
+### Instruction pipelining 
+
+Pipelining is one of the oldest forms of ILP, and has actually been around 
+since the mid-80s 
+
+When CPUs execute instructions, each instruction isn't really executed as an
+atomic operation. What actually happens is that first the instruction is 
+fetched, then it is decoded, then it is actually executed, and finally the 
+result is written back. Actually, depending on the CPU architecture, there may
+be more stages, but the same basic idea applies. In a pipelined architecture,
+the CPU will start loading future instructions before it has finished processing
+the current instruction.
+
+Branches kill the CPU's ability to use a pipeline efficiently. For example, 
+assuming that the CPU has a four stage pipeline, at instruction *n*, the CPU 
+will already start loading instruction *n+3*. If instruction n says to jump to 
+some other instruction, then instructions *n+1*, *n+2*, and *n+3* will have to 
+be flushed from the pipeline so the new string of instructions can be processed.
+
+### SIMD instructions
+
+SIMD stands for Single Instruction Multiple Data. When working wiht SIMD, you
+use arrays of data instead of individual values. There are a few restrictions 
+on what you can do with these data - the arrays have to be a spefific size,
+and you have to apply the exact same operation to every element in the array.
+Branching can make this diffuclt, as you might not know how many elements you 
+have to deal with, and you might need to apply different operations to the 
+elements of your array. There are ways around this, as will be shown in the 
+examples coming up. 
+
+## Capitalising UTF-8 strings
+
+The ASCII/UTF-8 character encoding is set up in a way that you can capitalise 
+a character by subtracting 32 from it. At least if it is a lower-case 
+alphabetic character, you can  do this. For upper-case or punctuation 
+characters, subtracting 32 will result in gibberish, so first you have to check
+the character is something between 'a' and 'z'. In C, to capitalise the string 
+`s` with length `len` you could do something like this:
+
+```c
+for(int i=0; i < len; ++i) {
+   if(s[i] >= 'a' && s[i] <= 'z') {
+     s[i] -= 32;
+   }
+}
+```
+
+### V1.0: A very jumpy capitalisation function
 If I was to implement the capitalisation algorithm shown above, I would go for
 something like this:
 
@@ -120,7 +162,8 @@ On my computer, this takes about 3.32 seconds to process 10^9 characters. This
 isn't great, and it's probably due to those two branches used to determine if
 the character was between 'a' and 'z'.
 
-## V1.5: A Slightly Less Jumpy Implementation
+
+## V1.5: A slightly less jumpy implementation
 
 *You can skip this section if you want, it describes how to make things a bit
 more efficient, but it doesn't introduce branchless instructions yet.*
@@ -157,7 +200,7 @@ single instruction.
 The next bit, the really weird bit, is that it will compere the result to 26,
 and jump if the value is not lower. As we have already subtracted 'a' from 
 the original and as 'z' is 26 places away from 'a' if the original value was
-greated than 'z' this test will result in a jump. What if the value was less
+greater than 'z' this test will result in a jump. What if the value was less
 than 'a'? Where is the test for that? Well here is the thing `jnb` treats the
  value as *unsigned*. If you have a negative signed value, then the bits in the
 register are going to be equivalent to some large unsigned number. If the value
@@ -168,7 +211,7 @@ definitely cuts out one of the jump instructions and it does give you a
 significant performance improvement, but there is still one jump left, so there
 are still gains to be made.
 
-## V2.0: A Branch-free Implementation
+### V2.0: A Branch-free implementation
 It's possible to remove the last jump instruction in the range check by using 
 a *conditional* move instruction. These behave like a regular move instruction,
 except that if their condition is not met, then they do nothing. Like the jump
@@ -215,7 +258,7 @@ pipeline flushes, and on my computer it can process 10^9 characters in about
 0.65 seconds. That is a bit more than a 5x improvement in running time. 
 
 
-## V3.0 SIMD Implementation
+### V3.0 SIMD implementation
 One of the interesting things about the branchless implementation, is that no
 mater what data are being processed, the exact same set of instructions are 
 executed each iteration of the loop. Some of the instructions might not do
@@ -293,4 +336,89 @@ computer, which is about 4.6 times as fast as the version which used
 conditional moves to avoid branching, and almost 21 times as fast as the 
 original, branching implementation.
 
+## Automatically generating SIMD code
+Having devoted so much space to describing how these optimisations work, this
+section on how to get `gcc` to automatically generate them is going to be 
+pretty brief. There is not much to say besides which switches to use and how to
+diagnose the problem when you are not getting the optimisation you are looking
+for.
+
+In an earlier section I said that `gcc` wasn't able to optimize away the extra 
+jump instruction in the non-SIMD version of my capitalisation function. This 
+wasn't the full truth. In this document I have shown two versions of the C 
+function, the first version used an `if` statement and the second version 
+multiplied the number being added to the values by a boolean. 
+
+If I were to use the following version of the function:
+```c
+void capitalise(char *s, size_t l) {
+    for(int i=0; i < len; ++i) {
+        s[i] -= 32 * (s[i] >= 'a' && s[i] <= 'z')
+    }
+}
+```
+
+and if I compile that using `gcc -O2`, it would actually produce code very
+similar to the 
+[branch-free assembly implementation](#v20-a-branch-free-implementation) of 
+the function. I believe that `-fif-conversion` is the specific optimisation 
+flag that will cause `gcc` to use the conditional move instructions, but this 
+flag is included in `-02`.
+
+If you want to get `gcc` to produce AVX2 SIMD code, then you need to enable
+`-ftree-vectorize` and also you need to tell `gcc` that it is OK to use AVX2
+operations. By default, `gcc` will avoid using AVX2, as not all x86 CPUs have
+these instructions. Using the C example above, compiling with 
+
+`gcc -O2 -ftree-vectorize -mavx2` will produce a result very similar to the 
+[SIMD assembler implementation](#v30-simd-implementation) of the capitalize 
+function. 
+
+### Diagnosing issues with optimizations
+As shown above, the optimization can be sensitive to the initial C code that 
+is supplied. Even if the implementation is logically equivalent, use of an `if`
+statement can result in the optimizer failing to find the right optimization.
+So just because you turn on an optimization flag, does not guarantee that it
+will be applied. 
+
+There are several ways you can diagnose this. The most obvious thing is to test
+if there was positive change in performance. You should have some kind of a 
+test harness in place before you even start making performance optimizations to
+your code, so this should be easy to check. The second thing you can do is to 
+inspect the instructions being produced by using the `-S` flag. Of course, 
+this relies on you already having a very good idea of how the optimization 
+should be implemented, and this isn't always obvious. 
+
+Fortunately `gcc` provides some diagnostics that help you to understand what
+optimisations have been applied, and which gives reasons for the ones which 
+could not be applied. If you use the `-fopt-info-all` flag it will output
+this information to the console while compiling. For example, in the case where `capitalise.c` uses an `if` statement:
+
+```
+gcc -O2 -ftree-vectorize -mavx2  -fopt-info-all -S capitalise.c
+Unit growth for small function inlining: 13->13 (0%)
+
+Inlined 0 calls, eliminated 0 functions
+
+capitalise.c:4:5: missed: couldn't vectorize loop
+capitalise.c:4:5: missed: not vectorized: control flow in loop.
+capitalise.c:3:6: note: vectorized 0 loops in function.
+```
+
+Or in the case where `capitalise.c` uses multiplication by a boolean instead
+of using `if`:
+
+```
+gcc -O2 -ftree-vectorize -mavx2  -fopt-info-all -S capitalise.c
+Unit growth for small function inlining: 13->13 (0%)
+
+Inlined 0 calls, eliminated 0 functions
+
+capitalise.c:4:5: optimized: loop vectorized using 32 byte vectors
+capitalise.c:3:6: note: vectorized 1 loops in function.
+```
+
+Here I can see that the loop was optimized and that the 32 byte AVX-2 
+instructions were used. If I saw that only 16 byte vectors were being used, 
+then I would know the older MMX instructions were being used instead. 
 
